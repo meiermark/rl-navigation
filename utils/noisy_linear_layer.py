@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import math
 
 
+# Contributions to "Deep Reinforcement Learning Hands-On" by Maxim Lapan
 class NoisyLinear(nn.Linear):
     def __init__(self, in_features, out_features, sigma_init=0.017, bias=True):
         super(NoisyLinear, self).__init__(in_features, out_features, bias=bias)
