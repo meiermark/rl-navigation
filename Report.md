@@ -1,5 +1,5 @@
 
-[image1]: https://raw.githubusercontent.com/meiermark13/rl-navigation/master/training_results.png "Training"
+[image1]: https://github.com/meiermark/rl-navigation/blob/master/training_results.png?raw=true "Training"
 
 
 
