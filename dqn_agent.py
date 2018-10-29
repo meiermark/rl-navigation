@@ -2,17 +2,16 @@
 import numpy as np
 import random
 
-from model import DQN, Dueling_DQN
+from model import DQN, NoisyDuelingDQN
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from replay_buffer import ReplayBuffer
+from utils.replay_buffer import ReplayBuffer
 
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
-GAMMA = 0.99  # discount factor
 TAU = 1e-3  # for soft update of target parameters
 LR = 5e-4  # learning rate
 UPDATE_EVERY = 4  # how often to update the network
@@ -23,7 +22,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed, dueling_dqn=False):
+    def __init__(self, state_size, action_size, seed, gamma=0.99, step_size=1, dueling_dqn=False):
         """Initialize an Agent object.
 
         Params
@@ -39,8 +38,8 @@ class Agent():
         # Q-Network
         if dueling_dqn:
             print("Use dueling dqn")
-            self.qnetwork_local = Dueling_DQN(state_size, action_size, seed).to(device)
-            self.qnetwork_target = Dueling_DQN(state_size, action_size, seed).to(device)
+            self.qnetwork_local = NoisyDuelingDQN(state_size, action_size, seed).to(device)
+            self.qnetwork_target = NoisyDuelingDQN(state_size, action_size, seed).to(device)
         else:
             print("Use non-dueling dqn")
             self.qnetwork_local = DQN(state_size, action_size, seed).to(device)
@@ -52,6 +51,8 @@ class Agent():
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
+        self.gamma = gamma
+        self.step_size = step_size
 
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
@@ -62,16 +63,15 @@ class Agent():
         if self.t_step == 0:
             # If enough samples are available in memory, get random subset and learn
             if len(self.memory) > BATCH_SIZE:
-                experiences = self.memory.sample_guided(gamma=GAMMA, dqn=self.qnetwork_local)
-                self.learn(experiences, GAMMA)
+                experiences = self.memory.sample()
+                self.learn(experiences)
 
-    def act(self, state, eps=0.):
+    def act(self, state):
         """Returns actions for given state as per current policy.
 
         Params
         ======
             state (array_like): current state
-            eps (float): epsilon, for epsilon-greedy action selection
         """
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
         self.qnetwork_local.eval()
@@ -79,13 +79,9 @@ class Agent():
             action_values = self.qnetwork_local(state)
         self.qnetwork_local.train()
 
-        # Epsilon-greedy action selection
-        if random.random() > eps:
-            return np.argmax(action_values.cpu().data.numpy())
-        else:
-            return random.choice(np.arange(self.action_size))
+        return np.argmax(action_values.cpu().data.numpy())
 
-    def learn(self, experiences, gamma):
+    def learn(self, experiences):
         """Update value parameters using given batch of experience tuples.
 
         Params
@@ -93,13 +89,14 @@ class Agent():
             experiences (Tuple[torch.Variable]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones, sample_probs = experiences
+        states, actions, rewards, next_states, dones = experiences
 
         # Compute and minimize loss
         # Get max predicted Q values (for next states) from target model
         Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
         # Compute Q targets for current states
-        Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
+        ## gamma ^ step_size for nstep dqn
+        Q_targets = rewards + (pow(self.gamma, self.step_size) * Q_targets_next * (1 - dones))
 
         # Get expected Q values from local model
         Q_expected = self.qnetwork_local(states).gather(1, actions)

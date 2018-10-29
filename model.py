@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from utils.noisy_linear_layer import NoisyLinear
+
 
 class DQN(nn.Module):
     """Actor (Policy) Model."""
@@ -29,9 +31,9 @@ class DQN(nn.Module):
         return self.fc3(x)
 
 
-class Dueling_DQN(nn.Module):
+class DuelingDQN(nn.Module):
     def __init__(self, state_size, action_size, seed):
-        super(Dueling_DQN, self).__init__()
+        super(DuelingDQN, self).__init__()
         self.seed = torch.manual_seed(seed)
 
         self.action_size = action_size
@@ -44,6 +46,36 @@ class Dueling_DQN(nn.Module):
 
         self.fc1_val = nn.Linear(in_features=64, out_features=64)
         self.fc2_val = nn.Linear(in_features=64, out_features=1)
+
+    def forward(self, state):
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
+
+        adv = F.relu(self.fc1_adv(x))
+        adv = self.fc2_adv(adv)
+
+        val = F.relu(self.fc1_val(x))
+        val = self.fc2_val(val).expand(x.size(0), self.action_size)
+
+        x = val + adv - adv.mean(1).unsqueeze(1).expand(x.size(0), self.action_size)
+        return x
+
+
+class NoisyDuelingDQN(nn.Module):
+    def __init__(self, state_size, action_size, seed):
+        super(NoisyDuelingDQN, self).__init__()
+        self.seed = torch.manual_seed(seed)
+
+        self.action_size = action_size
+
+        self.fc1 = nn.Linear(state_size, 128)
+        self.fc2 = nn.Linear(128, 64)
+
+        self.fc1_adv = NoisyLinear(in_features=64, out_features=64)
+        self.fc2_adv = NoisyLinear(in_features=64, out_features=action_size)
+
+        self.fc1_val = NoisyLinear(in_features=64, out_features=64)
+        self.fc2_val = NoisyLinear(in_features=64, out_features=1)
 
     def forward(self, state):
         x = F.relu(self.fc1(state))
